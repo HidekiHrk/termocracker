@@ -5,7 +5,9 @@ import re
 from typing import List
 
 WORD_RE = r'(_|\w){5}'
+TRY_RE = r'\w{5}'
 AVAILABLE_LETTERS_RE = r'\w+'
+ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 class TermoCrackerError(Exception):
     pass
@@ -104,8 +106,9 @@ def print_data(data: dict):
     print("""Data:
 \tWord: {word}
 \tMislocated Letters: {mislocated_letters}
-\tAvailable Letters: {available_letters}
-""".format(**data))
+\tTries: {tries}
+\tAvailable Letters: {current_available_letters}
+""".format(**data, current_available_letters=', '.join(get_available_letters(data))))
 
 def add_mislocated(data: dict, *args):
     if not re.match(WORD_RE, args[0]):
@@ -118,12 +121,6 @@ def set_mislocated(data: dict, *args):
     for arg in args:
         add_mislocated(data, arg)
 
-def set_available(data: dict, *args):
-    if not re.match(AVAILABLE_LETTERS_RE, args[0].strip()):
-        raise TermoCrackerError(f"Pattern not attended by {args[0]}")
-
-    data['available_letters'] = args[0].strip().upper()
-
 def set_word(data: dict, *args):        
     if not re.match(WORD_RE, args[0].strip()):
         raise TermoCrackerError(f"Pattern not attended by {args[0]}")
@@ -134,12 +131,23 @@ def clear(data: dict):
     new_data = {
         "word": "",
         "mislocated_letters": [],
-        "available_letters": ""
+        "available_letters": "",
+        "tries": []
     }
     
     for k, v in new_data.items():
         data[k] = v
+        
+def add_try(data: dict, *args):
+    if not re.match(TRY_RE, args[0]):
+        raise TermoCrackerError(f"Pattern not attended by {args[0]}")
+    data['tries'].append(args[0].strip().upper())
+    
 
+def pop_try(data: dict):
+    item = data['tries'].pop()
+    print(f"Removed try: {item}")
+    
 def get_help(*args):
     print("""Help:
 \thelp - Shows this message.
@@ -147,17 +155,23 @@ def get_help(*args):
 \tword - Sets the incomplete word. Missing spaces are represented by '_'. Example: > word C_R_O
 \taddmis - Adds a mislocated letter config. Missing spaces are represented by '_'. Example: > addmis _R_A_
 \tsetmis - Set all mislocated letter configs. Missing spaces are represented by '_'. Example: > setmis _R___ ___A_
-\tsetavailable - Set all available letters. Example: > setavailable ABCDEFGHIJKLMNOPQRSTUVWXYZ
 \tsearch - Searches all possible matches and prints out on the shell.
 \tdata - Prints out all info the system have about the guess.
 \tclear - Clear the system for another guess.
+\ttry - Adds a try. A try makes all its letters that are not in the current word or mislocated letters instantly not available. Example: try CARRO
+\tpoptry - Removes the last try.
 """)
-        
+    
+def get_available_letters(data: dict):
+    known_letters = set(filter(lambda x: x != '_', data['word'] + ''.join(data['mislocated_letters'])))
+    result = set(filter(lambda x: x not in known_letters, ''.join(data['tries'])))
+    return list(filter(lambda x: x not in result, ALPHABET))
+    
 def search(data: dict):
     word = data['word']
     discovered_mislocated_letters = data['mislocated_letters']
-    available_letters = [*iterate_through_string(data['available_letters'])]
-    if not re.match(WORD_RE, word) or not all(map(lambda x: re.match(WORD_RE, x), discovered_mislocated_letters)) or not re.match(AVAILABLE_LETTERS_RE, data['available_letters']):
+    available_letters = get_available_letters(data)
+    if not re.match(WORD_RE, word) or not all(map(lambda x: re.match(WORD_RE, x), discovered_mislocated_letters)):
         raise TermoCrackerError("System not fullfilled.")
     sentence_list = [*get_sentence_list(word)]
     possible = binary_search(word, sentence_list)
@@ -172,18 +186,20 @@ def cli():
     data = {
         "word": "",
         "mislocated_letters": [],
-        "available_letters": ""
+        "tries": []
     }
     command_list = {
         'help': get_help,
         'word': lambda *args: set_word(data, *args),
         'addmis': lambda *args: add_mislocated(data, *args),
         'setmis': lambda *args: set_mislocated(data, *args),
-        'setavailable': lambda *args: set_available(data, *args),
         'search': lambda: search(data),
         'data': lambda: print_data(data),
-        'clear': lambda: clear(data)
+        'clear': lambda: clear(data),
+        'try': lambda *args: add_try(data, *args),
+        'poptry': lambda: pop_try(data)
     }
+    print("Type 'help' to view all commands")
     while True:
         command_text = input('> ').strip()
         arguments = command_text.split(' ')
